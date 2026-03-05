@@ -7,20 +7,37 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        megaport: {
+                            orange: '#FF6B00',
+                            black: '#000000',
+                            white: '#FFFFFF'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { -webkit-tap-highlight-color: transparent; background-color: #f8fafc; overflow-x: hidden; color: #000; }
-        .zoom-slider { -webkit-appearance: none; width: 100%; height: 6px; background: #cbd5e1; border-radius: 5px; outline: none; }
-        .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: #4f46e5; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        /* 強制選單文字與輸入框背景顯影 */
-        select, input, textarea { font-size: 16px !important; color: #000 !important; background-color: #fff !important; border: 1px solid #e2e8f0 !important; }
-        .conflict-glow { animation: pulse-red 2s infinite; }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        body { -webkit-tap-highlight-color: transparent; background-color: #000000; overflow-x: hidden; color: #FFFFFF; }
+        .zoom-slider { -webkit-appearance: none; width: 100%; height: 6px; background: #333; border-radius: 5px; outline: none; }
+        .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: #FF6B00; border-radius: 50%; cursor: pointer; border: 2px solid white; }
+        select, input, textarea { font-size: 16px !important; color: #000 !important; background-color: #fff !important; }
+        .conflict-glow { animation: pulse-orange 2s infinite; }
+        @keyframes pulse-orange { 0% { box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.5); } 70% { box-shadow: 0 0 0 10px rgba(255, 107, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 107, 0, 0); } }
     </style>
 </head>
 <body>
@@ -33,6 +50,9 @@
         const timeToMinutes = (t) => { if(!t) return 0; const p = t.split(':'); return parseInt(p[0],10)*60 + parseInt(p[1],10); };
         const minutesToTime = (m) => pad(Math.floor(m/60)) + ':' + pad(m%60);
 
+        // 預設舞台顏色
+        const PRESET_COLORS = ['#FF6B00', '#FFD600', '#00FF41', '#00E0FF', '#FF00E5', '#FFFFFF', '#FF3D00', '#9D00FF'];
+
         function App() {
             const [stages, setStages] = useState([]);
             const [acts, setActs] = useState([]);
@@ -41,13 +61,14 @@
             const [isAdminOpen, setIsAdminOpen] = useState(false);
             const [currentDay, setCurrentDay] = useState('');
             const [activeStageId, setActiveStageId] = useState('');
-            const [rowHeight, setRowHeight] = useState(25); // 每一格(10分鐘)的高度
+            const [rowHeight, setRowHeight] = useState(25); // 甘特圖每格高度
             
             const [editingActId, setEditingActId] = useState(null);
             const [formAct, setFormAct] = useState({ day: '', stageId: '', name: '', sh: '12', sm: '00', eh: '13', em: '00' });
+            const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
             const [backupData, setBackupData] = useState('');
 
-            const STORAGE_KEY = 'megaport_v19_gantt';
+            const STORAGE_KEY = 'megaport_v20_theme';
 
             useEffect(() => {
                 const saved = localStorage.getItem(STORAGE_KEY);
@@ -70,7 +91,6 @@
                 if (!activeStageId && stages.length > 0) setActiveStageId(stages[0].id);
             }, [availableDays, stages]);
 
-            // 甘特圖時間軸範圍：保底顯示 11:00 - 22:00
             const dayRange = useMemo(() => {
                 const dayActs = acts.filter(a => a.day === currentDay);
                 if (dayActs.length === 0) return { start: 660, end: 1320 };
@@ -82,7 +102,7 @@
                 return { start: minTime, end: maxTime };
             }, [acts, currentDay]);
 
-            const conflictDetails = useMemo(() => {
+            const conflictMap = useMemo(() => {
                 const picked = acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay);
                 const map = {}; 
                 for (let i = 0; i < picked.length; i++) {
@@ -103,28 +123,30 @@
 
             const handleActSubmit = (e) => {
                 e.preventDefault();
-                if(!formAct.stageId) return alert("請建立舞台");
+                if(!formAct.stageId) return alert("請先建立舞台");
                 const newAct = { id: editingActId || Date.now().toString(), day: formAct.day, stageId: formAct.stageId, name: formAct.name, startTime: formAct.sh + ':' + formAct.sm, endTime: formAct.eh + ':' + formAct.em };
                 if (editingActId) { setActs(acts.map(a => a.id === editingActId ? newAct : a)); setEditingActId(null); } 
                 else { setActs([...acts, newAct]); }
                 setFormAct({ ...formAct, name: '' });
-                alert("儲存成功");
+                alert("存入完成");
             };
 
             return (
-                <div className="min-h-screen pb-24 font-sans select-none antialiased bg-slate-50">
-                    <header className="sticky top-0 z-40 bg-white border-b p-4 flex justify-between items-center shadow-sm">
+                <div className="min-h-screen pb-24 font-sans select-none antialiased bg-black text-white">
+                    {/* Header */}
+                    <header className="sticky top-0 z-40 bg-black border-b border-megaport-orange/30 p-4 flex justify-between items-center">
                         <div className="flex flex-col">
-                            <h1 className="font-black text-xl text-slate-900 tracking-tight">2026 大港時程表</h1>
-                            <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest flex items-center gap-1">v19 Gantt Grid Edition</p>
+                            <h1 className="font-black text-xl text-megaport-orange uppercase italic tracking-tighter">MEGAPORT 2026</h1>
+                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest">Gantt Grid Edition v20</p>
                         </div>
-                        <button onClick={() => setIsAdminOpen(true)} className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-all z-50">⚙️</button>
+                        <button onClick={() => setIsAdminOpen(true)} className="w-12 h-12 bg-megaport-orange text-black rounded-2xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-all z-50 font-bold">⚙️</button>
                     </header>
 
-                    <nav className="flex bg-white/90 backdrop-blur-md border-b sticky top-[80px] z-30 shadow-sm">
-                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase ${activeTab === 'explore' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📂 舞台</button>
-                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase ${activeTab === 'matrix' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📅 總表</button>
-                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase ${activeTab === 'picks' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📝 時程</button>
+                    {/* Navbar */}
+                    <nav className="flex bg-black/90 backdrop-blur-md border-b border-white/10 sticky top-[80px] z-30 shadow-2xl">
+                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'explore' ? 'text-megaport-orange border-b-4 border-megaport-orange' : 'text-white/30'}`}>📂 舞台</button>
+                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'matrix' ? 'text-megaport-orange border-b-4 border-megaport-orange' : 'text-white/30'}`}>📅 總表</button>
+                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'picks' ? 'text-megaport-orange border-b-4 border-megaport-orange' : 'text-white/30'}`}>📝 時程</button>
                     </nav>
 
                     <main className="p-4 max-w-md mx-auto">
@@ -132,24 +154,24 @@
                             <div className="space-y-4">
                                 <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                                     {availableDays.length > 0 && availableDays.map(day => (
-                                        <button key={day} onClick={() => setCurrentDay(day)} className={`px-4 py-1.5 rounded-full text-xs font-black border-2 transition-all ${currentDay === day ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>{day}</button>
+                                        <button key={day} onClick={() => setCurrentDay(day)} className={`px-5 py-2 rounded-full text-xs font-black border-2 transition-all shrink-0 ${currentDay === day ? 'bg-megaport-orange border-megaport-orange text-black' : 'bg-black border-white/20 text-white/40'}`}>{day}</button>
                                     ))}
                                 </div>
                                 <div className="flex overflow-x-auto gap-2 no-scrollbar pb-2">
                                     {stages.map(s => (
-                                        <button key={s.id} onClick={() => setActiveStageId(s.id)} className={`px-4 py-2 rounded-xl text-xs font-black border-2 flex items-center gap-2 transition-all ${activeStageId === s.id ? 'border-indigo-600 bg-white shadow-md' : 'border-slate-100 text-slate-400'}`}>
+                                        <button key={s.id} onClick={() => setActiveStageId(s.id)} className={`px-4 py-2 rounded-xl text-xs font-black border-2 flex items-center gap-2 transition-all shrink-0 ${activeStageId === s.id ? 'border-megaport-orange bg-megaport-orange/10 text-megaport-orange' : 'border-white/10 text-white/40'}`}>
                                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />{s.name}
                                         </button>
                                     ))}
                                 </div>
                                 <div className="space-y-3">
                                     {acts.filter(a => a.day === currentDay && a.stageId === activeStageId).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)).map(act => (
-                                        <div key={act.id} onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])} className={`p-5 rounded-[28px] border-2 flex items-center justify-between bg-white ${selectedIds.includes(act.id) ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-transparent shadow-sm'}`}>
+                                        <div key={act.id} onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])} className={`p-6 rounded-[28px] border-2 flex items-center justify-between bg-white/5 active:scale-95 transition-all ${selectedIds.includes(act.id) ? 'border-megaport-orange ring-4 ring-megaport-orange/20 shadow-[0_0_20px_rgba(255,107,0,0.2)]' : 'border-white/5'}`}>
                                             <div>
-                                                <div className="text-[10px] font-black px-2 py-0.5 rounded-md inline-block mb-1 text-indigo-600 bg-indigo-50">{act.startTime} — {act.endTime}</div>
-                                                <h3 className="font-bold text-lg text-black">{act.name}</h3>
+                                                <div className="text-[10px] font-black px-2 py-0.5 rounded-md inline-block mb-1 text-black bg-megaport-orange">{act.startTime} — {act.endTime}</div>
+                                                <h3 className="font-bold text-lg text-white">{act.name}</h3>
                                             </div>
-                                            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(act.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-100 text-transparent'}`}>✅</div>
+                                            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(act.id) ? 'bg-megaport-orange border-megaport-orange text-black' : 'border-white/10 text-transparent'}`}>✅</div>
                                         </div>
                                     ))}
                                 </div>
@@ -158,35 +180,35 @@
 
                         {activeTab === 'matrix' && (
                             <div className="space-y-4">
-                                <div className="bg-white p-4 rounded-[24px] border flex items-center gap-4 text-black shadow-sm">
-                                    <span className="text-[10px] font-black">縮放</span>
+                                <div className="bg-white/5 p-4 rounded-[24px] border border-white/10 flex items-center gap-4 text-white shadow-sm">
+                                    <span className="text-[10px] font-black uppercase text-megaport-orange">Zoom</span>
                                     <input type="range" min="15" max="60" step="5" value={rowHeight} onChange={e => setRowHeight(parseInt(e.target.value, 10))} className="zoom-slider flex-1" />
                                 </div>
                                 
-                                <div className="relative overflow-auto border-2 border-indigo-900 rounded-[32px] bg-white shadow-2xl no-scrollbar" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                                <div className="relative overflow-auto border-2 border-megaport-orange rounded-[32px] bg-black shadow-2xl no-scrollbar" style={{ maxHeight: 'calc(100vh - 280px)' }}>
                                     <div className="flex flex-col relative" style={{ width: (stages.length * 120) + 'px' }}>
-                                        {/* 頂部舞台橫軸 */}
-                                        <div className="flex sticky top-0 z-20 bg-indigo-900 h-[50px] border-b border-indigo-800">
+                                        {/* 甘特圖頂部 */}
+                                        <div className="flex sticky top-0 z-20 bg-megaport-orange h-[50px] border-b border-black">
                                             {stages.map(s => (
-                                                <div key={s.id} className="w-[120px] flex items-center justify-center text-[10px] font-black text-white border-l border-indigo-800 px-1 text-center truncate">
+                                                <div key={s.id} className="w-[120px] flex items-center justify-center text-[10px] font-black text-black border-l border-black/20 px-1 text-center truncate">
                                                     {s.name}
                                                 </div>
                                             ))}
                                         </div>
 
-                                        {/* 甘特圖主體 (CSS Grid 渲染) */}
+                                        {/* 甘特圖網格 */}
                                         <div className="relative grid" style={{ 
                                             gridTemplateColumns: `repeat(${stages.length}, 120px)`,
                                             gridTemplateRows: `repeat(${(dayRange.end - dayRange.start)/10}, ${rowHeight}px)`
                                         }}>
-                                            {/* 背景整點線與浮水印時間 */}
+                                            {/* 整點橫線與浮水印 */}
                                             {Array.from({ length: (dayRange.end - dayRange.start) / 60 + 1 }).map((_, i) => (
-                                                <div key={i} className="absolute w-full border-t border-slate-100 flex items-center pointer-events-none" style={{ top: (i * 60 * (rowHeight/10)) + 'px', height: '1px', zIndex: 5 }}>
-                                                    <span className="text-[9px] font-black text-slate-200 ml-1 uppercase">{minutesToTime(dayRange.start + (i*60))}</span>
+                                                <div key={i} className="absolute w-full border-t border-white/10 flex items-center pointer-events-none" style={{ top: (i * 60 * (rowHeight/10)) + 'px', height: '1px', zIndex: 5 }}>
+                                                    <span className="text-[9px] font-black text-white/20 ml-2 uppercase italic bg-black pr-2">{minutesToTime(dayRange.start + (i*60))}</span>
                                                 </div>
                                             ))}
 
-                                            {/* 渲染表演方塊 */}
+                                            {/* 演出方塊渲染 */}
                                             {acts.filter(a => a.day === currentDay).map(act => {
                                                 const s = stages.find(x => x.id === act.stageId);
                                                 const colIdx = stages.findIndex(x => x.id === act.stageId);
@@ -196,17 +218,17 @@
                                                 const isSelected = selectedIds.includes(act.id);
 
                                                 return (
-                                                    <div key={act.id} onClick={() => togglePick(act.id)} 
-                                                        className={`m-[2px] rounded-xl border-2 flex flex-col justify-center text-center p-1 transition-all ${isSelected ? 'z-10 shadow-lg opacity-100' : 'opacity-10 grayscale pointer-events-none'}`}
+                                                    <div key={act.id} onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])} 
+                                                        className={`m-[2px] rounded-xl border-2 flex flex-col justify-center text-center p-1 transition-all ${isSelected ? 'z-10 shadow-lg opacity-100 ring-2 ring-white/20' : 'opacity-10 grayscale pointer-events-none'}`}
                                                         style={{ 
                                                             gridColumnStart: colIdx + 1, 
                                                             gridRow: `${Math.round(rowStart)} / ${Math.round(rowEnd)}`,
-                                                            backgroundColor: s?.color + '20',
+                                                            backgroundColor: s?.color + '40', // 40 = 25% opacity
                                                             borderColor: s?.color,
-                                                            color: s?.color
+                                                            color: '#FFFFFF'
                                                         }}>
-                                                        <div className="text-[7px] font-black leading-none mb-0.5">{act.startTime}-{act.endTime}</div>
-                                                        <div className="text-[9px] font-black leading-tight break-words">{act.name}</div>
+                                                        <div className="text-[7px] font-black leading-none mb-0.5 opacity-70">{act.startTime}-{act.endTime}</div>
+                                                        <div className="text-[10px] font-black leading-tight break-words">{act.name}</div>
                                                     </div>
                                                 );
                                             })}
@@ -220,101 +242,116 @@
                             <div className="space-y-4">
                                 {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)).map((act) => {
                                     const s = stages.find(x => x.id === act.stageId);
-                                    const cList = conflictDetails[act.id] || [];
+                                    const cList = conflictMap[act.id] || [];
+                                    const hasConflict = cList.length > 0;
                                     return (
-                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white border-2 shadow-xl ${cList.length > 0 ? 'border-red-500 bg-red-50 conflict-glow' : 'border-white'}`}>
+                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white/5 border-2 transition-all ${hasConflict ? 'border-megaport-orange bg-megaport-orange/5 conflict-glow' : 'border-white/10'}`}>
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className={`text-xs font-black font-mono px-3 py-1 rounded-full ${cList.length > 0 ? 'bg-red-500 text-white' : 'bg-slate-900 text-white'}`}>{act.startTime} — {act.endTime}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{s?.name}</span>
+                                                <span className={`text-xs font-black font-mono px-3 py-1 rounded-full ${hasConflict ? 'bg-megaport-orange text-black' : 'bg-white text-black'}`}>{act.startTime} — {act.endTime}</span>
+                                                <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest" style={{ color: s?.color }}>{s?.name}</span>
                                             </div>
-                                            <h3 className={`text-xl font-black italic ${cList.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>{act.name}</h3>
+                                            <h3 className={`text-xl font-black italic ${hasConflict ? 'text-megaport-orange' : 'text-white'}`}>{act.name}</h3>
                                             {cList.map((c, i) => (
-                                                <p key={i} className="text-[10px] font-bold text-red-500 mt-2">⚠️ 與 {c.with} 衝突 ({c.range})</p>
+                                                <p key={i} className="text-[10px] font-bold text-megaport-orange mt-2 flex items-center gap-1">⚠️ 衝突: {c.with} ({c.range})</p>
                                             ))}
                                         </div>
                                     );
                                 })}
+                                {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).length === 0 && (
+                                    <div className="text-center py-24 opacity-10 font-black italic text-5xl rotate-[-5deg]">NO PLANS</div>
+                                )}
                             </div>
                         )}
                     </main>
 
-                    {/* 後台管理抽屜 (z-9999 強制顯影) */}
+                    {/* 後台管理 (z-9999 強制顯影) */}
                     {isAdminOpen && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999]">
-                            <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 max-h-[90vh] overflow-y-auto relative border-4 border-indigo-600">
-                                <button onClick={() => { setIsAdminOpen(false); setEditingActId(null); }} className="absolute top-4 right-4 w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-2xl active:scale-90">❌</button>
+                        <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-[9999]">
+                            <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-8 max-h-[90vh] overflow-y-auto relative border-4 border-megaport-orange">
+                                <button onClick={() => { setIsAdminOpen(false); setEditingActId(null); }} className="absolute top-4 right-4 w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-2xl active:scale-90 text-black">❌</button>
                                 
-                                <h2 className="text-2xl font-black mb-6 text-black border-b-4 border-indigo-600 pb-2 inline-block uppercase">Config</h2>
+                                <h2 className="text-2xl font-black mb-6 text-black border-b-4 border-megaport-orange pb-2 inline-block italic uppercase">Management</h2>
 
-                                <section className="mb-10 bg-indigo-50 p-6 rounded-[32px]">
-                                    <h3 className="text-xs font-black text-indigo-900 mb-4 tracking-widest uppercase">1. 舞台設定</h3>
-                                    <div className="flex flex-wrap gap-2 mb-4">
+                                {/* 1. 舞台管理 (含選色) */}
+                                <section className="mb-10 bg-slate-50 p-6 rounded-[32px] border border-slate-200">
+                                    <h3 className="text-xs font-black text-slate-400 mb-4 tracking-widest uppercase">1. 定義舞台與選色</h3>
+                                    <div className="flex flex-wrap gap-2 mb-6">
                                         {stages.map(s => (
-                                            <div key={s.id} className="bg-white border-2 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-2" style={{borderColor: s.color}}>
+                                            <div key={s.id} className="bg-white border-2 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-2" style={{borderColor: s.color, color: '#000'}}>
                                                 <div className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}/>{s.name}
-                                                <button onClick={() => {if(confirm('刪除舞台？')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="text-slate-300 ml-1">🗑️</button>
+                                                <button onClick={() => {if(confirm('刪除舞台？')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="text-slate-300 ml-1 text-xs">🗑️</button>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="flex gap-2">
-                                        <input id="s-name" type="text" placeholder="名稱" className="flex-1 rounded-xl px-4 py-3 text-sm font-bold shadow-sm" />
-                                        <button onClick={() => { const n = document.getElementById('s-name').value; if(n) setStages([...stages, { id: Date.now().toString(), name: n, color: PRESET_COLORS[stages.length % PRESET_COLORS.length] }]); document.getElementById('s-name').value=''; }} className="bg-indigo-600 text-white px-4 rounded-xl font-bold">新增</button>
+                                    <div className="space-y-4">
+                                        <input id="s-name" type="text" placeholder="輸入舞台名稱..." className="w-full rounded-xl px-4 py-3 text-sm font-bold border-2 border-slate-200 text-black" />
+                                        <div className="flex flex-wrap gap-2 justify-center py-2">
+                                            {PRESET_COLORS.map(c => (
+                                                <button key={c} onClick={() => setSelectedColor(c)} 
+                                                    className={`w-9 h-9 rounded-full border-4 transition-all shadow-md ${selectedColor === c ? 'border-black scale-110' : 'border-white'}`} 
+                                                    style={{backgroundColor: c}} />
+                                            ))}
+                                        </div>
+                                        <button onClick={() => { const n = document.getElementById('s-name').value; if(n) setStages([...stages, { id: Date.now().toString(), name: n, color: selectedColor }]); document.getElementById('s-name').value=''; }} className="w-full bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">建立新舞台</button>
                                     </div>
                                 </section>
 
+                                {/* 2. 演出錄入 */}
                                 <section className="mb-10">
-                                    <h3 className="text-xs font-black text-slate-400 mb-4 tracking-widest uppercase">2. 演出錄入</h3>
+                                    <h3 className="text-xs font-black text-slate-400 mb-4 tracking-widest uppercase">2. 輸入演出資料</h3>
                                     <form onSubmit={handleActSubmit} className="space-y-4">
                                         <div className="grid grid-cols-2 gap-3">
-                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="rounded-xl px-4 py-3 text-xs font-bold" />
-                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="rounded-xl px-4 py-3 text-xs font-bold">
+                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="rounded-xl px-4 py-3 text-xs font-bold border-2 border-slate-100 text-black" />
+                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="rounded-xl px-4 py-3 text-xs font-bold border-2 border-slate-100 text-black">
                                                 <option value="">選擇舞台</option>
                                                 {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
                                         </div>
-                                        <input placeholder="表演名" value={formAct.name} onChange={e=>setFormAct({...formAct, name: e.target.value})} required className="w-full rounded-xl px-4 py-3 text-sm font-bold shadow-sm" />
+                                        <input placeholder="樂團名稱" value={formAct.name} onChange={e=>setFormAct({...formAct, name: e.target.value})} required className="w-full rounded-xl px-4 py-3 text-sm font-bold border-2 border-slate-100 text-black" />
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="text-center">
-                                                <p className="text-[9px] font-black text-slate-400 mb-1">開始</p>
+                                                <p className="text-[9px] font-black text-slate-400 mb-1">START</p>
                                                 <div className="flex gap-1">
                                                     <select value={formAct.sh} onChange={e=>setFormAct({...formAct, sh: e.target.value})} className="flex-1 bg-slate-100 rounded-lg p-2 text-xs font-black">{Array.from({length:24},(_,i)=>pad(i)).map(h=><option key={h} value={h}>{h}</option>)}</select>
                                                     <select value={formAct.sm} onChange={e=>setFormAct({...formAct, sm: e.target.value})} className="flex-1 bg-slate-100 rounded-lg p-2 text-xs font-black">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
                                                 </div>
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-[9px] font-black text-slate-400 mb-1">結束</p>
+                                                <p className="text-[9px] font-black text-slate-400 mb-1">END</p>
                                                 <div className="flex gap-1">
                                                     <select value={formAct.eh} onChange={e=>setFormAct({...formAct, eh: e.target.value})} className="flex-1 bg-slate-100 rounded-lg p-2 text-xs font-black">{Array.from({length:24},(_,i)=>pad(i)).map(h=><option key={h} value={h}>{h}</option>)}</select>
                                                     <select value={formAct.em} onChange={e=>setFormAct({...formAct, em: e.target.value})} className="flex-1 bg-slate-100 rounded-lg p-2 text-xs font-black">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
                                                 </div>
                                             </div>
                                         </div>
-                                        <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase">💾 {editingActId ? '修改演出' : '存入行程'}</button>
+                                        <button type="submit" className="w-full bg-megaport-orange text-black font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase">💾 {editingActId ? '儲存修改' : '存入項目'}</button>
                                     </form>
                                 </section>
 
-                                <section className="mb-10 bg-slate-900 p-8 rounded-[40px] text-white">
-                                    <h3 className="text-[10px] font-black text-slate-500 mb-4 tracking-widest uppercase italic">💾 Data Insurance</h3>
-                                    <textarea className="w-full h-24 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-slate-300 border-none mb-4 ring-1 ring-white/10" placeholder="在此貼上代碼..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea>
+                                {/* 3. 資料保險箱 */}
+                                <section className="mb-10 bg-black p-8 rounded-[40px] text-white">
+                                    <h3 className="text-[10px] font-black text-megaport-orange mb-4 tracking-widest uppercase italic">💾 Data Insurance</h3>
+                                    <textarea className="w-full h-24 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-white border-none mb-4 ring-1 ring-white/10" placeholder="貼上備份代碼..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea>
                                     <div className="grid grid-cols-2 gap-3">
                                         <button onClick={() => { const s = JSON.stringify({ stages, acts, selectedIds }); setBackupData(s); alert('代碼已產生！'); }} className="bg-white/10 py-3 rounded-2xl font-black text-xs uppercase">Export</button>
-                                        <button onClick={() => { if(!backupData) return; if(confirm('⚠️ 確定執行還原？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('還原成功！'); setBackupData(''); } catch(e) { alert('代碼錯誤'); } } }} className="bg-indigo-600 py-3 rounded-2xl font-black text-xs uppercase shadow-lg shadow-indigo-900/40">Restore</button>
+                                        <button onClick={() => { if(!backupData) return; if(confirm('⚠️ 確定執行還原？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('還原成功！'); setBackupData(''); } catch(e) { alert('❌ 無效代碼'); } } }} className="bg-megaport-orange text-black py-3 rounded-2xl font-black text-xs uppercase shadow-lg shadow-megaport-orange/40">Restore</button>
                                     </div>
                                 </section>
 
+                                {/* 4. 演出清單管理 */}
                                 <section className="pb-10 space-y-3">
-                                    <h3 className="text-xs font-black text-slate-400 mb-4 tracking-widest uppercase underline decoration-2 underline-offset-4">演出清單</h3>
+                                    <h3 className="text-xs font-black text-slate-400 mb-4 tracking-widest uppercase underline decoration-2 underline-offset-4 px-2">演出清單管理</h3>
                                     {acts.sort((a,b)=>timeToMinutes(a.startTime)-timeToMinutes(b.startTime)).map(a => (
-                                        <div key={a.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-3xl border text-black">
+                                        <div key={a.id} className="flex justify-between items-center bg-slate-50 p-5 rounded-[24px] border border-slate-100 shadow-sm text-black">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1 text-[9px] font-bold text-slate-400 uppercase">
+                                                <div className="flex items-center gap-2 mb-1 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
                                                     <span>{a.day}</span>
                                                     <span style={{color: stages.find(s=>s.id===a.stageId)?.color}}>{stages.find(s=>s.id===a.stageId)?.name}</span>
                                                 </div>
                                                 <p className="font-black text-sm">{a.startTime} {a.name}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => { const sP = a.startTime.split(':'); const eP = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh: sP[0], sm: sP[1], eh: eP[0], em: eP[1] }); setEditingActId(a.id); }} className="text-indigo-600 text-xl">✏️</button>
+                                                <button onClick={() => { const sp = a.startTime.split(':'); const ep = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh: sp[0], sm: sp[1], eh: ep[0], em: ep[1] }); setEditingActId(a.id); }} className="text-megaport-orange text-xl">✏️</button>
                                                 <button onClick={() => {if(confirm('刪除？')) setActs(acts.filter(x=>x.id!==a.id));}} className="text-red-600 text-xl">🗑️</button>
                                             </div>
                                         </div>
@@ -327,7 +364,6 @@
             );
         }
 
-        const PRESET_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#10B981', '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899', '#64748B', '#000000'];
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
