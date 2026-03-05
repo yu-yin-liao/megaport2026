@@ -16,14 +16,13 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        body { -webkit-tap-highlight-color: transparent; background-color: #f8fafc; overflow-x: hidden; }
+        body { -webkit-tap-highlight-color: transparent; background-color: #f8fafc; overflow-x: hidden; color: #000; }
         .zoom-slider { -webkit-appearance: none; width: 100%; height: 6px; background: #cbd5e1; border-radius: 5px; outline: none; }
-        .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: #4f46e5; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        select, input, textarea { font-size: 16px !important; }
+        .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: #4f46e5; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        select, input, textarea { font-size: 16px !important; color: #000 !important; }
         .conflict-glow { animation: pulse-red 2s infinite; }
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-        /* 確保絕對定位容器具備相對基點 */
-        .timeline-wrapper { position: relative; width: 100%; }
+        .timeline-container { position: relative; width: 100%; background: white; }
     </style>
 </head>
 <body>
@@ -32,7 +31,9 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- 核心時間轉換工具 ---
+        // 傳統補零函數，保證所有設備相容
+        const pad = (n) => (n < 10 ? '0' + n : '' + n);
+
         const timeToMinutes = (time) => {
             if(!time) return 0;
             const [h, m] = time.split(':').map(Number);
@@ -42,30 +43,24 @@
         const minutesToTime = (totalMinutes) => {
             const h = Math.floor(totalMinutes / 60);
             const m = totalMinutes % 60;
-            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+            return pad(h) + ':' + pad(m);
         };
 
         function App() {
-            // 資料狀態
             const [stages, setStages] = useState([]);
             const [acts, setActs] = useState([]);
             const [selectedIds, setSelectedIds] = useState([]);
-            
-            // UI 狀態
             const [activeTab, setActiveTab] = useState('explore');
             const [isAdminOpen, setIsAdminOpen] = useState(false);
             const [currentDay, setCurrentDay] = useState('');
             const [activeStageId, setActiveStageId] = useState('');
-            const [gridScale, setGridScale] = useState(3.0); // 1分鐘 = 3px
-            
-            // 編輯與備份狀態
+            const [gridScale, setGridScale] = useState(3.0); 
             const [editingActId, setEditingActId] = useState(null);
             const [formAct, setFormAct] = useState({ day: '', stageId: '', name: '', sh: '12', sm: '00', eh: '13', em: '00' });
             const [backupData, setBackupData] = useState('');
 
-            const STORAGE_KEY = 'megaport_v15_final';
+            const STORAGE_KEY = 'megaport_v16_final';
 
-            // 資料持久化
             useEffect(() => {
                 const saved = localStorage.getItem(STORAGE_KEY);
                 if (saved) {
@@ -80,26 +75,27 @@
                 localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages, acts, selectedIds }));
             }, [stages, acts, selectedIds]);
 
-            const availableDays = useMemo(() => Array.from(new Set(acts.map(a => a.day))).sort(), [acts]);
+            const availableDays = useMemo(() => {
+                const days = Array.from(new Set(acts.map(a => a.day))).sort();
+                return days;
+            }, [acts]);
             
             useEffect(() => {
                 if (!currentDay && availableDays.length > 0) setCurrentDay(availableDays[0]);
                 if (!activeStageId && stages.length > 0) setActiveStageId(stages[0].id);
             }, [availableDays, stages]);
 
-            // 計算時間軸範圍：保底顯示到 22:00
             const dayRange = useMemo(() => {
                 const dayActs = acts.filter(a => a.day === currentDay);
-                if (dayActs.length === 0) return { start: 660, end: 1320 }; // 預設 11:00-22:00
+                if (dayActs.length === 0) return { start: 660, end: 1320 };
                 const starts = dayActs.map(a => timeToMinutes(a.startTime));
                 const ends = dayActs.map(a => timeToMinutes(a.endTime));
-                let minTime = Math.floor(Math.min(...starts) / 60) * 60; // 鎖定整點
+                let minTime = Math.floor(Math.min(...starts) / 60) * 60;
                 let maxTime = Math.ceil(Math.max(...ends) / 60) * 60;
-                if (maxTime < 1320) maxTime = 1320; // 最少到晚上 10 點
+                if (maxTime < 1320) maxTime = 1320; 
                 return { start: minTime, end: maxTime };
             }, [acts, currentDay]);
 
-            // --- 進階衝突分析引擎 v15 ---
             const conflictDetails = useMemo(() => {
                 const picked = acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay);
                 const map = {}; 
@@ -108,64 +104,64 @@
                         const a = picked[i], b = picked[j];
                         const sA = timeToMinutes(a.startTime), eA = timeToMinutes(a.endTime);
                         const sB = timeToMinutes(b.startTime), eB = timeToMinutes(b.endTime);
-
                         if (Math.max(sA, sB) < Math.min(eA, eB)) {
                             const intersectStart = Math.max(sA, sB);
                             const intersectEnd = Math.min(eA, eB);
-                            const range = `${minutesToTime(intersectStart)}-${minutesToTime(intersectEnd)}`;
+                            const rangeStr = minutesToTime(intersectStart) + '-' + minutesToTime(intersectEnd);
                             const type = (sA === sB && eA === eB) ? "完全衝突" : "部分重疊";
-                            
                             if (!map[a.id]) map[a.id] = [];
                             if (!map[b.id]) map[b.id] = [];
-                            map[a.id].push({ type, range, with: b.name });
-                            map[b.id].push({ type, range, with: a.name });
+                            map[a.id].push({ type, range: rangeStr, with: b.name });
+                            map[b.id].push({ type, range: rangeStr, with: a.name });
                         }
                     }
                 }
                 return map;
             }, [acts, selectedIds, currentDay]);
 
-            // 處理程序
             const handleActSubmit = (e) => {
                 e.preventDefault();
-                const newAct = { id: editingActId || Date.now().toString(), day: formAct.day, stageId: formAct.stageId, name: formAct.name, startTime: `${formAct.sh}:${formAct.sm}`, endTime: `${formAct.eh}:${formAct.em}` };
-                if (editingActId) { setActs(acts.map(a => a.id === editingActId ? newAct : a)); setEditingActId(null); alert('✅ 已更新資料'); } 
+                const newAct = { id: editingActId || Date.now().toString(), day: formAct.day, stageId: formAct.stageId, name: formAct.name, startTime: formAct.sh + ':' + formAct.sm, endTime: formAct.eh + ':' + formAct.em };
+                if (editingActId) { setActs(acts.map(a => a.id === editingActId ? newAct : a)); setEditingActId(null); } 
                 else { setActs([...acts, newAct]); }
                 setFormAct({ ...formAct, name: '' });
             };
 
             const togglePick = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
+            // 產出數字範圍陣列
+            const rangeArr = (start, end, step) => {
+                const res = [];
+                for (let i = start; i < end; i += step) res.push(i);
+                return res;
+            };
+
             return (
                 <div className="min-h-screen pb-24 font-sans select-none antialiased bg-slate-50">
-                    {/* Header */}
                     <header className="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center shadow-sm">
                         <div className="flex flex-col">
                             <h1 className="font-black text-xl text-slate-900 uppercase tracking-tight">2026 大港時程表</h1>
                             <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span> Precision Edition v15
+                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span> Compatible v16
                             </p>
                         </div>
                         <button onClick={() => setIsAdminOpen(true)} className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-xl active:scale-90 transition-all">⚙️</button>
                     </header>
 
-                    {/* Navbar */}
-                    <nav className="flex bg-white/80 backdrop-blur-md border-b sticky top-[69px] z-40 shadow-sm">
-                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'explore' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📂 舞台</button>
-                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'matrix' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📅 總表</button>
-                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'picks' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📝 時程表</button>
+                    <nav className="flex bg-white/90 backdrop-blur-md border-b sticky top-[69px] z-40 shadow-sm">
+                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'explore' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📂 舞台</button>
+                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'matrix' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📅 總表</button>
+                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'picks' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📝 時程表</button>
                     </nav>
 
                     <main className="p-4 max-w-md mx-auto">
                         {activeTab === 'explore' && (
-                            <div className="space-y-4 animate-in fade-in duration-300">
-                                {availableDays.length > 0 && (
-                                    <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                                        {availableDays.map(day => (
-                                            <button key={day} onClick={() => setCurrentDay(day)} className={`px-4 py-1.5 rounded-full text-xs font-black border-2 transition-all ${currentDay === day ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}>{day}</button>
-                                        ))}
-                                    </div>
-                                )}
+                            <div className="space-y-4">
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                                    {availableDays.map(day => (
+                                        <button key={day} onClick={() => setCurrentDay(day)} className={`px-4 py-1.5 rounded-full text-xs font-black border-2 transition-all ${currentDay === day ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}>{day}</button>
+                                    ))}
+                                </div>
                                 <div className="flex overflow-x-auto gap-2 no-scrollbar pb-2">
                                     {stages.map(s => (
                                         <button key={s.id} onClick={() => setActiveStageId(s.id)} className={`px-4 py-2 rounded-xl text-xs font-black border-2 flex items-center gap-2 transition-all ${activeStageId === s.id ? 'border-indigo-600 bg-white shadow-md' : 'border-slate-100 text-slate-400'}`}>
@@ -177,8 +173,8 @@
                                     {acts.filter(a => a.day === currentDay && a.stageId === activeStageId).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)).map(act => (
                                         <div key={act.id} onClick={() => togglePick(act.id)} className={`p-5 rounded-[28px] border-2 flex items-center justify-between bg-white active:scale-95 transition-all ${selectedIds.includes(act.id) ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-transparent shadow-sm'}`}>
                                             <div>
-                                                <div className="text-[10px] font-black px-2 py-0.5 rounded-md inline-block mb-1" style={{ backgroundColor: `${stages.find(s=>s.id===act.stageId)?.color}20`, color: stages.find(s=>s.id===act.stageId)?.color }}>{act.startTime} — {act.endTime}</div>
-                                                <h3 className="font-bold text-lg leading-tight">{act.name}</h3>
+                                                <div className="text-[10px] font-black px-2 py-0.5 rounded-md inline-block mb-1" style={{ backgroundColor: stages.find(s=>s.id===act.stageId)?.color + '20', color: stages.find(s=>s.id===act.stageId)?.color }}>{act.startTime} — {act.endTime}</div>
+                                                <h3 className="font-bold text-lg leading-tight text-black">{act.name}</h3>
                                             </div>
                                             <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(act.id) ? 'bg-indigo-600 border-indigo-600 text-white text-[10px]' : 'border-slate-100 text-transparent'}`}>✅</div>
                                         </div>
@@ -188,76 +184,47 @@
                         )}
 
                         {activeTab === 'matrix' && (
-                            <div className="space-y-4 animate-in zoom-in duration-300">
-                                <div className="bg-white p-4 rounded-[24px] border flex items-center gap-4 shadow-sm">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Scale</span>
+                            <div className="space-y-4">
+                                <div className="bg-white p-4 rounded-[24px] border flex items-center gap-4 shadow-sm text-black">
+                                    <span className="text-[10px] font-black uppercase">Scale</span>
                                     <input type="range" min="1.5" max="5" step="0.1" value={gridScale} onChange={e => setGridScale(parseFloat(e.target.value))} className="zoom-slider flex-1" />
-                                    <span className="text-[10px] font-mono font-bold w-12 text-center bg-slate-50 py-1 rounded-md">{gridScale.toFixed(1)}x</span>
+                                    <span className="text-[10px] font-mono font-bold w-12 text-center">{gridScale.toFixed(1)}x</span>
                                 </div>
 
                                 <div className="relative overflow-auto border-2 border-indigo-900 rounded-[32px] bg-white shadow-2xl no-scrollbar" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-                                    <div className="flex timeline-wrapper" style={{ width: `${60 + (stages.length * 110)}px`, height: `${(dayRange.end - dayRange.start) * gridScale + 60}px` }}>
-                                        
-                                        {/* 側邊時間標尺 (絕對定位) */}
-                                        <div className="sticky left-0 top-0 w-[60px] h-full bg-slate-50/95 backdrop-blur-md z-30 border-r border-slate-100 shadow-xl">
-                                            <div className="h-[60px] bg-indigo-900 flex items-center justify-center text-[8px] text-white font-black italic border-b border-indigo-800">TIME</div>
-                                            {Array.from({ length: (dayRange.end - dayRange.start) / 30 + 1 }).map((_, i) => {
-                                                const mins = dayRange.start + (i * 30);
-                                                return (
-                                                    <div key={i} className="absolute w-full text-[8px] font-black text-slate-400 font-mono text-center" style={{ top: `${60 + (i * 30 * gridScale)}px`, transform: 'translateY(-50%)' }}>
-                                                        {minutesToTime(mins)}
-                                                    </div>
-                                                );
-                                            })}
+                                    <div className="flex timeline-container" style={{ width: (60 + (stages.length * 110)) + 'px', height: ((dayRange.end - dayRange.start) * gridScale + 60) + 'px' }}>
+                                        <div className="sticky left-0 top-0 w-[60px] h-full bg-slate-50/95 backdrop-blur-md z-30 border-r border-slate-100">
+                                            <div className="h-[60px] bg-indigo-900 flex items-center justify-center text-[8px] text-white font-black border-b border-indigo-800">TIME</div>
+                                            {rangeArr(dayRange.start, dayRange.end + 1, 30).map((mins, i) => (
+                                                <div key={i} className="absolute w-full text-[8px] font-black text-slate-400 font-mono text-center" style={{ top: (60 + (i * 30 * gridScale)) + 'px', transform: 'translateY(-50%)' }}>{minutesToTime(mins)}</div>
+                                            ))}
                                         </div>
-
-                                        {/* 內容區 */}
                                         <div className="flex-1 flex flex-col pt-[60px]">
-                                            {/* 頂部固定舞台名稱 */}
-                                            <div className="sticky top-0 h-[60px] flex z-20 bg-indigo-900 border-b border-indigo-800 shadow-md">
+                                            <div className="sticky top-0 h-[60px] flex z-20 bg-indigo-900 border-b border-indigo-800">
                                                 {stages.map(s => (
                                                     <div key={s.id} className="w-[110px] flex flex-col items-center justify-center text-[9px] font-black text-white border-l border-indigo-800 px-1 text-center">
-                                                        <div className="w-1.5 h-1.5 rounded-full mb-1" style={{ backgroundColor: s.color }} />
-                                                        {s.name}
+                                                        <div className="w-1.5 h-1.5 rounded-full mb-1" style={{ backgroundColor: s.color }} />{s.name}
                                                     </div>
                                                 ))}
                                             </div>
-
                                             <div className="relative flex-1">
-                                                {/* 背景參考線 */}
-                                                {Array.from({ length: (dayRange.end - dayRange.start) / 60 + 1 }).map((_, i) => (
-                                                    <div key={i} className="absolute w-full border-b border-slate-100 border-dashed" style={{ top: `${i * 60 * gridScale}px`, height: '1px' }} />
+                                                {rangeArr(dayRange.start, dayRange.end + 1, 60).map((_, i) => (
+                                                    <div key={i} className="absolute w-full border-b border-slate-100 border-dashed" style={{ top: (i * 60 * gridScale) + 'px', height: '1px' }} />
                                                 ))}
-
-                                                {/* 渲染演出方塊 (絕對定位 0 誤差) */}
                                                 {acts.filter(a => a.day === currentDay).map(act => {
                                                     const s = stages.find(x => x.id === act.stageId);
                                                     const isSelected = selectedIds.includes(act.id);
                                                     const colIndex = stages.findIndex(x => x.id === act.stageId);
                                                     if (colIndex === -1) return null;
-
                                                     const actStart = timeToMinutes(act.startTime);
                                                     const actEnd = timeToMinutes(act.endTime);
                                                     const topPos = (actStart - dayRange.start) * gridScale;
                                                     const heightPos = (actEnd - actStart) * gridScale;
-
                                                     return (
-                                                        <div 
-                                                            key={act.id} 
-                                                            onClick={() => togglePick(act.id)}
-                                                            className={`absolute w-[106px] rounded-xl border-2 p-1 text-center flex flex-col justify-center transition-all cursor-pointer shadow-sm
-                                                                ${isSelected ? 'z-10 opacity-100 ring-2 ring-indigo-200' : 'opacity-10 grayscale pointer-events-none'}`}
-                                                            style={{ 
-                                                                left: `${colIndex * 110 + 2}px`, 
-                                                                top: `${topPos}px`, 
-                                                                height: `${heightPos}px`,
-                                                                backgroundColor: `${s?.color}15`,
-                                                                borderColor: s?.color,
-                                                                color: s?.color
-                                                            }}
-                                                        >
+                                                        <div key={act.id} onClick={() => togglePick(act.id)} className={`absolute w-[106px] rounded-xl border-2 p-1 text-center flex flex-col justify-center shadow-sm transition-all ${isSelected ? 'z-10 opacity-100 ring-2 ring-indigo-200' : 'opacity-10 grayscale pointer-events-none'}`}
+                                                            style={{ left: (colIndex * 110 + 2) + 'px', top: topPos + 'px', height: heightPos + 'px', backgroundColor: s?.color + '15', borderColor: s?.color, color: s?.color }}>
                                                             <div className="text-[7px] font-black opacity-80 leading-none mb-0.5">{act.startTime}-{act.endTime}</div>
-                                                            <div className="text-[9px] font-black leading-tight break-words overflow-hidden">{act.name}</div>
+                                                            <div className="text-[9px] font-black leading-tight break-words">{act.name}</div>
                                                         </div>
                                                     );
                                                 })}
@@ -269,13 +236,13 @@
                         )}
 
                         {activeTab === 'picks' && (
-                            <div className="space-y-4 animate-in slide-in-from-bottom duration-300">
+                            <div className="space-y-4">
                                 {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)).map((act) => {
                                     const s = stages.find(x => x.id === act.stageId);
                                     const actConflicts = conflictDetails[act.id] || [];
                                     const hasConflict = actConflicts.length > 0;
                                     return (
-                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white border-2 shadow-xl transition-all duration-300 ${hasConflict ? 'border-red-500 bg-red-50 conflict-glow' : 'border-white'}`}>
+                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white border-2 shadow-xl ${hasConflict ? 'border-red-500 bg-red-50 conflict-glow' : 'border-white'}`}>
                                             <div className="flex flex-col gap-3">
                                                 <div className="flex items-center justify-between">
                                                     <span className={`text-xs font-black font-mono px-3 py-1 rounded-full ${hasConflict ? 'bg-red-500 text-white shadow-md' : 'bg-slate-900 text-white'}`}>{act.startTime} — {act.endTime}</span>
@@ -285,10 +252,7 @@
                                                 {hasConflict && (
                                                     <div className="space-y-2 pt-2 border-t border-red-200">
                                                         {actConflicts.map((c, i) => (
-                                                            <div key={i} className="text-[10px] font-bold text-red-600 flex items-start gap-1">
-                                                                <span>⚠️</span>
-                                                                <div><span className="font-black">[{c.type} {c.range}]</span> 與 <span className="underline decoration-red-300">[{c.with}]</span> 重疊</div>
-                                                            </div>
+                                                            <div key={i} className="text-[10px] font-bold text-red-600 flex items-start gap-1"><span>⚠️</span><div><span className="font-black">[{c.type} {c.range}]</span> 與 <span className="underline">[{c.with}]</span> 重疊</div></div>
                                                         ))}
                                                     </div>
                                                 )}
@@ -301,78 +265,69 @@
                         )}
                     </main>
 
-                    {/* 後台抽屜 */}
                     {isAdminOpen && (
                         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-end">
-                            <div id="admin-drawer" className="bg-white w-full rounded-t-[40px] p-8 max-h-[92vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom">
+                            <div className="bg-white w-full rounded-t-[40px] p-8 max-h-[92vh] overflow-y-auto shadow-2xl">
                                 <div className="flex justify-between items-center mb-8 sticky top-0 bg-white z-10 py-2 border-b">
-                                    <h2 className="text-2xl font-black italic uppercase">{editingActId ? '✏️ 編輯項目' : '⚙️ 設定中心'}</h2>
-                                    <button onClick={() => { setIsAdminOpen(false); setEditingActId(null); }} className="w-10 h-10 bg-slate-100 rounded-2xl active:scale-90 flex items-center justify-center text-xl">❌</button>
+                                    <h2 className="text-2xl font-black italic uppercase text-black">{editingActId ? '✏️ 編輯項目' : '⚙️ 設定中心'}</h2>
+                                    <button onClick={() => { setIsAdminOpen(false); setEditingActId(null); }} className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-xl text-black">❌</button>
                                 </div>
-
                                 <section className="mb-10 bg-slate-50 p-6 rounded-[32px] shadow-inner space-y-4">
                                     <form className="space-y-4" onSubmit={handleActSubmit}>
                                         <div className="grid grid-cols-2 gap-3">
-                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none" />
-                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none">
+                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none text-black" />
+                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none text-black">
                                                 <option value="">選擇舞台</option>
                                                 {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
                                         </div>
-                                        <input placeholder="樂團單位名稱" value={formAct.name} onChange={e=>setFormAct({...formAct, name: e.target.value})} required className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border-none shadow-sm" />
+                                        <input placeholder="樂團單位名稱" value={formAct.name} onChange={e=>setFormAct({...formAct, name: e.target.value})} required className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border-none shadow-sm text-black" />
                                         <div className="grid grid-cols-2 gap-4 text-center text-slate-400 text-[9px] font-black uppercase">
                                             <div><p>Start</p><div className="flex gap-1">
-                                                <select value={formAct.sh} onChange={e=>setFormAct({...formAct, sh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select>
-                                                <select value={formAct.sm} onChange={e=>setFormAct({...formAct, sm: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
+                                                <select value={formAct.sh} onChange={e=>setFormAct({...formAct, sh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm text-black">{rangeArr(0, 24, 1).map(h=> <option key={h} value={pad(h)}>{pad(h)}</option>)}</select>
+                                                <select value={formAct.sm} onChange={e=>setFormAct({...formAct, sm: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm text-black">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
                                             </div></div>
                                             <div><p>End</p><div className="flex gap-1">
-                                                <select value={formAct.eh} onChange={e=>setFormAct({...formAct, eh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select>
-                                                <select value={formAct.em} onChange={e=>setFormAct({...formAct, em: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
+                                                <select value={formAct.eh} onChange={e=>setFormAct({...formAct, eh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm text-black">{rangeArr(0, 24, 1).map(h=> <option key={h} value={pad(h)}>{pad(h)}</option>)}</select>
+                                                <select value={formAct.em} onChange={e=>setFormAct({...formAct, em: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm text-black">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
                                             </div></div>
                                         </div>
                                         <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase">💾 {editingActId ? '確認修改' : '存入項目'}</button>
                                     </form>
                                 </section>
-
                                 <section className="mb-12 space-y-4">
                                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">舞台定義與色標</h3>
                                     <div className="flex flex-wrap gap-2">{stages.map(s => (
-                                        <div key={s.id} className="bg-white border-2 px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-3 shadow-sm" style={{ borderColor: s.color }}>
+                                        <div key={s.id} className="bg-white border-2 px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-3 shadow-sm text-black" style={{ borderColor: s.color }}>
                                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />{s.name}
-                                            <button onClick={() => {if(confirm('🚨 確定刪除？這會連同該舞台演出一併清除。')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="opacity-30 hover:opacity-100">🗑️</button>
+                                            <button onClick={() => {if(confirm('🚨 確定刪除？')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="text-black">🗑️</button>
                                         </div>
                                     ))}</div>
                                     <div className="bg-slate-50 p-6 rounded-[24px] space-y-4">
-                                        <input id="s-name" type="text" placeholder="輸入舞台名稱..." className="w-full bg-white border-none rounded-xl px-4 py-3 text-sm font-bold shadow-sm" />
-                                        <div className="flex flex-wrap gap-2 justify-center">{PRESET_COLORS.map(c => <button key={c} onClick={() => window._selColor = c} className="w-9 h-9 rounded-full border-4 border-white shadow-sm focus:ring-4 focus:ring-indigo-500" style={{ backgroundColor: c }} />)}</div>
+                                        <input id="s-name" type="text" placeholder="輸入舞台名稱..." className="w-full bg-white border-none rounded-xl px-4 py-3 text-sm font-bold shadow-sm text-black" />
+                                        <div className="flex flex-wrap gap-2 justify-center">{PRESET_COLORS.map(c => <button key={c} onClick={() => window._selColor = c} className="w-9 h-9 rounded-full border-4 border-white shadow-sm" style={{ backgroundColor: c }} />)}</div>
                                         <button onClick={() => { const n = document.getElementById('s-name').value; if(n) setStages([...stages, { id: Date.now().toString(), name: n, color: window._selColor || '#000' }]); document.getElementById('s-name').value=''; }} className="w-full bg-indigo-900 text-white py-4 rounded-2xl font-black text-xs uppercase shadow-xl">建立新舞台</button>
                                     </div>
                                 </section>
-
                                 <section className="mb-12 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl">
-                                    <h3 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest italic">💾 資料保險機制 / Data Insurance</h3>
-                                    <textarea className="w-full h-28 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-slate-300 border-none mb-4 ring-1 ring-white/10" placeholder="貼上備份代碼還原..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea>
+                                    <h3 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest italic">💾 資料保險機制</h3>
+                                    <textarea className="w-full h-28 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-slate-300 border-none mb-4 ring-1 ring-white/10" placeholder="貼上備份代碼..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => { const s = JSON.stringify({ stages, acts, selectedIds }); setBackupData(s); alert('代碼已產生！請複製保存。'); }} className="bg-white/10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest">產生代碼 (Export)</button>
-                                        <button onClick={() => { if(!backupData) return; if(confirm('⚠️ 匯入將完全覆蓋目前所有資料，確定執行？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('還原成功！'); setBackupData(''); } catch(e) { alert('❌ 格式錯誤'); } } }} className="bg-indigo-600 py-4 rounded-2xl font-black text-xs shadow-lg uppercase tracking-widest">資料還原 (Restore)</button>
+                                        <button onClick={() => { const s = JSON.stringify({ stages, acts, selectedIds }); setBackupData(s); alert('代碼已產生！'); }} className="bg-white/10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest">Export</button>
+                                        <button onClick={() => { if(!backupData) return; if(confirm('⚠️ 確定執行還原？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('還原成功！'); setBackupData(''); } catch(e) { alert('❌ 代碼錯誤'); } } }} className="bg-indigo-600 py-4 rounded-2xl font-black text-xs shadow-lg uppercase tracking-widest">Restore</button>
                                     </div>
                                 </section>
-
                                 <section className="pb-10 space-y-3">
-                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 underline underline-offset-4">管理已存項目</h3>
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">管理項目清單</h3>
                                     {acts.sort((a,b)=>timeToMinutes(a.startTime)-timeToMinutes(b.startTime)).map(a => (
-                                        <div key={a.id} className="flex justify-between items-center bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                                        <div key={a.id} className="flex justify-between items-center bg-white p-5 rounded-3xl border border-slate-100 shadow-sm text-black">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                                                    <span>{a.day}</span>
-                                                    <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                                                    <span style={{ color: stages.find(s=>s.id===a.stageId)?.color }}>{stages.find(s=>s.id===a.stageId)?.name}</span>
-                                                </div>
+                                                <div className="text-[9px] font-bold text-slate-400">{a.day} | {stages.find(s=>s.id===a.stageId)?.name}</div>
                                                 <p className="font-black text-sm">{a.startTime} {a.name}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => { const [sh, sm] = a.startTime.split(':'); const [eh, em] = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh, sm, eh, em }); setEditingActId(a.id); document.getElementById('admin-drawer').scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-10 h-10 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl active:scale-90">✏️</button>
-                                                <button onClick={() => { if(confirm('🗑️ 刪除這場表演？')) setActs(acts.filter(x=>x.id!==a.id)); }} className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 rounded-xl active:scale-90">🗑️</button>
+                                                <button onClick={() => { const [sh, sm] = a.startTime.split(':'); const [eh, em] = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh, sm, eh, em }); setEditingActId(a.id); }} className="w-10 h-10 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl">✏️</button>
+                                                <button onClick={() => { if(confirm('🗑️ 刪除？')) setActs(acts.filter(x=>x.id!==a.id)); }} className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 rounded-xl">🗑️</button>
                                             </div>
                                         </div>
                                     ))}
