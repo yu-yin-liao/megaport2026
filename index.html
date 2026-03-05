@@ -7,12 +7,10 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -28,10 +26,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
-
-        const TIME_STEP = 10; 
-        const PRESET_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#10B981', '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899', '#64748B', '#000000'];
+        const { useState, useEffect, useMemo, Fragment } = React;
 
         const timeToMinutes = (time) => {
             if(!time) return 0;
@@ -53,13 +48,12 @@
             const [isAdminOpen, setIsAdminOpen] = useState(false);
             const [currentDay, setCurrentDay] = useState('');
             const [activeStageId, setActiveStageId] = useState('');
-            const [gridZoom, setGridZoom] = useState(1);
+            const [gridScale, setGridScale] = useState(2.5); // 1min = 2.5px
             const [editingActId, setEditingActId] = useState(null);
             const [formAct, setFormAct] = useState({ day: '', stageId: '', name: '', sh: '12', sm: '00', eh: '13', em: '00' });
             const [backupData, setBackupData] = useState('');
 
-            // 使用全新 Key 避免舊資料干擾
-            const STORAGE_KEY = 'megaport_v13_stable';
+            const STORAGE_KEY = 'megaport_v15_absolute';
 
             useEffect(() => {
                 const saved = localStorage.getItem(STORAGE_KEY);
@@ -84,7 +78,7 @@
 
             const dayRange = useMemo(() => {
                 const dayActs = acts.filter(a => a.day === currentDay);
-                if (dayActs.length === 0) return { start: 660, end: 1320 };
+                if (dayActs.length === 0) return { start: 600, end: 1320 }; // 10:00 - 22:00
                 const starts = dayActs.map(a => timeToMinutes(a.startTime));
                 const ends = dayActs.map(a => timeToMinutes(a.endTime));
                 let minTime = Math.floor(Math.min(...starts) / 60) * 60;
@@ -94,29 +88,24 @@
                 return { start: minTime, end: maxTime };
             }, [acts, currentDay]);
 
-            // 衝突偵測與細節計算
             const detailedConflicts = useMemo(() => {
-                const pickedActs = acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay);
-                const conflictMap = {}; 
-                for (let i = 0; i < pickedActs.length; i++) {
-                    for (let j = i + 1; j < pickedActs.length; j++) {
-                        const a = pickedActs[i];
-                        const b = pickedActs[j];
-                        const sA = timeToMinutes(a.startTime);
-                        const eA = timeToMinutes(a.endTime);
-                        const sB = timeToMinutes(b.startTime);
-                        const eB = timeToMinutes(b.endTime);
+                const picked = acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay);
+                const map = {}; 
+                for (let i = 0; i < picked.length; i++) {
+                    for (let j = i + 1; j < picked.length; j++) {
+                        const a = picked[i], b = picked[j];
+                        const sA = timeToMinutes(a.startTime), eA = timeToMinutes(a.endTime);
+                        const sB = timeToMinutes(b.startTime), eB = timeToMinutes(b.endTime);
                         if (Math.max(sA, sB) < Math.min(eA, eB)) {
                             const range = `${minutesToTime(Math.max(sA, sB))}-${minutesToTime(Math.min(eA, eB))}`;
                             const type = (sA === sB && eA === eB) ? "完全衝突" : "部分重疊";
-                            if (!conflictMap[a.id]) conflictMap[a.id] = [];
-                            if (!conflictMap[b.id]) conflictMap[b.id] = [];
-                            conflictMap[a.id].push({ type, range, with: b.name });
-                            conflictMap[b.id].push({ type, range, with: a.name });
+                            if (!map[a.id]) map[a.id] = []; if (!map[b.id]) map[b.id] = [];
+                            map[a.id].push({ type, range, with: b.name });
+                            map[b.id].push({ type, range, with: a.name });
                         }
                     }
                 }
-                return conflictMap;
+                return map;
             }, [acts, selectedIds, currentDay]);
 
             const handleActSubmit = (e) => {
@@ -128,33 +117,31 @@
             };
 
             return (
-                <div className="min-h-screen pb-24 font-sans antialiased">
+                <div className="min-h-screen pb-24 font-sans select-none antialiased bg-slate-50">
                     <header className="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center shadow-sm">
                         <div className="flex flex-col">
                             <h1 className="font-black text-xl text-slate-900 uppercase">2026 大港時程表</h1>
                             <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span> Stable v13
+                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span> Absolute Engine v15
                             </p>
                         </div>
                         <button onClick={() => setIsAdminOpen(true)} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-xl active:scale-90 transition-all">⚙️</button>
                     </header>
 
-                    <nav className="flex bg-white/80 backdrop-blur-md border-b sticky top-[69px] z-40">
-                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'explore' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📂 舞台</button>
-                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'matrix' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📅 總表</button>
-                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest ${activeTab === 'picks' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📝 時程表</button>
+                    <nav className="flex bg-white/80 backdrop-blur-md border-b sticky top-[69px] z-40 shadow-sm">
+                        <button onClick={() => setActiveTab('explore')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'explore' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📂 舞台</button>
+                        <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'matrix' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📅 總表</button>
+                        <button onClick={() => setActiveTab('picks')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'picks' ? 'text-indigo-600 border-b-4 border-indigo-600' : 'text-slate-300'}`}>📝 時程表</button>
                     </nav>
 
                     <main className="p-4 max-w-md mx-auto">
                         {activeTab === 'explore' && (
                             <div className="space-y-4">
-                                {availableDays.length > 0 && (
-                                    <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                                        {availableDays.map(day => (
-                                            <button key={day} onClick={() => setCurrentDay(day)} className={`px-4 py-1.5 rounded-full text-xs font-black border-2 transition-all ${currentDay === day ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}>{day}</button>
-                                        ))}
-                                    </div>
-                                )}
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                                    {availableDays.map(day => (
+                                        <button key={day} onClick={() => setCurrentDay(day)} className={`px-4 py-1.5 rounded-full text-xs font-black border-2 transition-all ${currentDay === day ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>{day}</button>
+                                    ))}
+                                </div>
                                 <div className="flex overflow-x-auto gap-2 no-scrollbar pb-2">
                                     {stages.map(s => (
                                         <button key={s.id} onClick={() => setActiveStageId(s.id)} className={`px-4 py-2 rounded-xl text-xs font-black border-2 flex items-center gap-2 transition-all ${activeStageId === s.id ? 'border-indigo-600 bg-white shadow-md' : 'border-slate-100 text-slate-400'}`}>
@@ -167,7 +154,7 @@
                                         <div key={act.id} onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])} className={`p-5 rounded-[28px] border-2 flex items-center justify-between bg-white active:scale-95 transition-all ${selectedIds.includes(act.id) ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-transparent shadow-sm'}`}>
                                             <div>
                                                 <div className="text-[10px] font-black px-2 py-0.5 rounded-md inline-block mb-1" style={{ backgroundColor: `${stages.find(s=>s.id===act.stageId)?.color}20`, color: stages.find(s=>s.id===act.stageId)?.color }}>{act.startTime} — {act.endTime}</div>
-                                                <h3 className="font-bold text-lg leading-tight">{act.name}</h3>
+                                                <h3 className="font-bold text-lg">{act.name}</h3>
                                             </div>
                                             <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(act.id) ? 'bg-indigo-600 border-indigo-600 text-white text-[10px]' : 'border-slate-100 text-transparent'}`}>✅</div>
                                         </div>
@@ -179,51 +166,100 @@
                         {activeTab === 'matrix' && (
                             <div className="space-y-4">
                                 <div className="bg-white p-4 rounded-[24px] border flex items-center gap-4 shadow-sm">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Zoom</span>
-                                    <input type="range" min="0.6" max="1.8" step="0.1" value={gridZoom} onChange={e => setGridZoom(parseFloat(e.target.value))} className="zoom-slider flex-1" />
-                                    <span className="text-[10px] font-mono font-bold w-12 text-center bg-slate-100 rounded-md py-1">{Math.round(gridZoom * 100)}%</span>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Scale</span>
+                                    <input type="range" min="1.5" max="5" step="0.1" value={gridScale} onChange={e => setGridScale(parseFloat(e.target.value))} className="zoom-slider flex-1" />
+                                    <span className="text-[10px] font-mono font-bold w-12 text-center">{gridScale.toFixed(1)}x</span>
                                 </div>
-                                <div className="overflow-auto border-2 border-indigo-600 bg-white shadow-2xl no-scrollbar rounded-[24px]" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-                                    <div className="grid transition-all duration-200" style={{ gridTemplateColumns: `50px repeat(${stages.length}, ${100 * gridZoom}px)`, gridTemplateRows: `45px repeat(${(dayRange.end - dayRange.start) / TIME_STEP}, ${26 * gridZoom}px)` }}>
-                                        <div className="sticky top-0 left-0 bg-indigo-900 z-40 flex items-center justify-center text-[8px] text-white font-black italic border-r border-b border-indigo-800">TIME</div>
-                                        {stages.map(s => <div key={s.id} className="sticky top-0 bg-indigo-900 text-white text-[9px] font-black flex flex-col items-center justify-center z-30 border-l border-b border-indigo-800 px-1 text-center"><div className="w-1.5 h-1.5 rounded-full mb-1" style={{ backgroundColor: s.color }} />{s.name}</div>)}
-                                        {Array.from({ length: (dayRange.end - dayRange.start) / TIME_STEP }).map((_, i) => (
-                                            <div key={i} className="sticky left-0 bg-slate-50 border-r border-b border-slate-100 text-[8px] font-black flex items-center justify-center text-slate-400 z-20 font-mono">{minutesToTime(dayRange.start + (i * TIME_STEP))}</div>
-                                        ))}
-                                        {acts.filter(a => a.day === currentDay).map(act => {
-                                            const s = stages.find(x => x.id === act.stageId);
-                                            const picked = selectedIds.includes(act.id);
-                                            const col = stages.findIndex(x => x.id === act.stageId);
-                                            if (col === -1) return null;
-                                            return (
-                                                <div key={act.id} onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])} className={`m-[1px] p-1 rounded-lg flex flex-col items-center justify-center text-center border-2 transition-all ${picked ? 'z-10 shadow-lg' : 'opacity-20 grayscale'}`} style={{ gridRowStart: (timeToMinutes(act.startTime)-dayRange.start)/TIME_STEP+2, gridRowEnd: (timeToMinutes(act.endTime)-dayRange.start)/TIME_STEP+2, gridColumnStart: col + 2, backgroundColor: `${s?.color}15`, borderColor: s?.color, color: s?.color, fontSize: `${8 * gridZoom}px` }}>
-                                                    <div className="font-mono font-black opacity-70 mb-0.5" style={{ fontSize: `${6.5 * gridZoom}px` }}>{act.startTime}-{act.endTime}</div>
-                                                    <div className="font-black leading-tight truncate w-full">{act.name}</div>
-                                                </div>
-                                            );
-                                        })}
+
+                                <div className="relative overflow-auto border-2 border-indigo-900 rounded-[32px] bg-white shadow-2xl no-scrollbar" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                                    <div className="flex relative" style={{ width: `${60 + (stages.length * 120)}px`, height: `${(dayRange.end - dayRange.start) * gridScale + 60}px` }}>
+                                        
+                                        {/* 時間標尺 */}
+                                        <div className="sticky left-0 top-0 w-[60px] h-full bg-slate-50/90 backdrop-blur-sm z-30 border-r border-slate-100">
+                                            <div className="h-[60px] bg-indigo-900 flex items-center justify-center text-[8px] text-white font-black border-b border-indigo-800">TIME</div>
+                                            {Array.from({ length: (dayRange.end - dayRange.start) / 30 + 1 }).map((_, i) => {
+                                                const mins = dayRange.start + (i * 30);
+                                                return (
+                                                    <div key={i} className="absolute w-full text-[8px] font-black text-slate-400 font-mono text-center flex items-center justify-center" style={{ top: `${60 + (i * 30 * gridScale)}px`, height: '20px', transform: 'translateY(-50%)' }}>
+                                                        {minutesToTime(mins)}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* 舞台列與演出方塊 */}
+                                        <div className="flex-1 flex flex-col pt-[60px]">
+                                            <div className="sticky top-0 h-[60px] flex z-20 bg-indigo-900 border-b border-indigo-800">
+                                                {stages.map(s => (
+                                                    <div key={s.id} className="w-[120px] flex flex-col items-center justify-center text-[9px] font-black text-white border-l border-indigo-800">
+                                                        <div className="w-1.5 h-1.5 rounded-full mb-1" style={{ backgroundColor: s.color }} />
+                                                        {s.name}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="relative flex-1">
+                                                {/* 淡淡的整點背景線 */}
+                                                {Array.from({ length: (dayRange.end - dayRange.start) / 60 + 1 }).map((_, i) => (
+                                                    <div key={i} className="absolute w-full border-b border-slate-100" style={{ top: `${i * 60 * gridScale}px` }} />
+                                                ))}
+
+                                                {/* 渲染演出方塊 (絕對定位) */}
+                                                {acts.filter(a => a.day === currentDay).map(act => {
+                                                    const s = stages.find(x => x.id === act.stageId);
+                                                    const picked = selectedIds.includes(act.id);
+                                                    const colIndex = stages.findIndex(x => x.id === act.stageId);
+                                                    if (colIndex === -1) return null;
+
+                                                    const actStart = timeToMinutes(act.startTime);
+                                                    const actEnd = timeToMinutes(act.endTime);
+                                                    const top = (actStart - dayRange.start) * gridScale;
+                                                    const height = (actEnd - actStart) * gridScale;
+
+                                                    return (
+                                                        <div 
+                                                            key={act.id} 
+                                                            onClick={() => setSelectedIds(prev => prev.includes(act.id) ? prev.filter(i => i !== act.id) : [...prev, act.id])}
+                                                            className={`absolute w-[116px] rounded-xl border-2 p-1 text-center flex flex-col justify-center transition-all cursor-pointer shadow-sm
+                                                                ${picked ? 'z-10 opacity-100 scale-[0.98] border-opacity-100' : 'opacity-10 grayscale pointer-events-none'}`}
+                                                            style={{ 
+                                                                left: `${colIndex * 120 + 2}px`, 
+                                                                top: `${top}px`, 
+                                                                height: `${height}px`,
+                                                                backgroundColor: `${s?.color}15`,
+                                                                borderColor: s?.color,
+                                                                color: s?.color
+                                                            }}
+                                                        >
+                                                            <div className="text-[7px] font-black opacity-80 leading-none mb-0.5">{act.startTime}-{act.endTime}</div>
+                                                            <div className="text-[9px] font-black leading-tight break-all overflow-hidden line-clamp-2">{act.name}</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
                         {activeTab === 'picks' && (
-                            <div className="space-y-4">
+                            <div className="space-y-4 animate-in slide-in-from-bottom duration-300">
                                 {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)).map((act) => {
                                     const s = stages.find(x => x.id === act.stageId);
-                                    const actConflicts = detailedConflicts[act.id] || [];
-                                    const hasConflict = actConflicts.length > 0;
+                                    const conflicts = detailedConflicts[act.id] || [];
+                                    const hasConflict = conflicts.length > 0;
                                     return (
-                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white border-2 shadow-xl transition-all duration-300 ${hasConflict ? 'border-red-500 bg-red-50 conflict-glow' : 'border-white'}`}>
+                                        <div key={act.id} className={`p-6 rounded-[32px] bg-white border-2 shadow-xl ${hasConflict ? 'border-red-500 bg-red-50 conflict-glow' : 'border-white'}`}>
                                             <div className="flex flex-col gap-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className={`text-xs font-black font-mono px-3 py-1 rounded-full ${hasConflict ? 'bg-red-500 text-white' : 'bg-slate-900 text-white'}`}>{act.startTime} — {act.endTime}</span>
+                                                    <span className={`text-xs font-black font-mono px-3 py-1 rounded-full ${hasConflict ? 'bg-red-500 text-white shadow-md' : 'bg-slate-900 text-white'}`}>{act.startTime} — {act.endTime}</span>
                                                     <div className="text-[10px] font-black uppercase px-2 py-1 rounded bg-slate-100" style={{ color: s?.color }}>{s?.name}</div>
                                                 </div>
                                                 <h3 className={`text-xl font-black italic tracking-tighter ${hasConflict ? 'text-red-700' : 'text-slate-900'}`}>{act.name}</h3>
                                                 {hasConflict && (
                                                     <div className="space-y-2 pt-2 border-t border-red-200">
-                                                        {actConflicts.map((c, i) => (
+                                                        {conflicts.map((c, i) => (
                                                             <div key={i} className="text-[10px] font-bold text-red-600 flex items-start gap-1">
                                                                 <span>⚠️</span>
                                                                 <div><span className="font-black">[{c.type}]</span> {c.range} 與 <span className="underline">[{c.with}]</span> 重疊</div>
@@ -235,81 +271,42 @@
                                         </div>
                                     );
                                 })}
-                                {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).length === 0 && <div className="text-center py-24 opacity-10 font-black italic text-5xl rotate-[-5deg]">EMPTY PLAN</div>}
+                                {acts.filter(a => selectedIds.includes(a.id) && a.day === currentDay).length === 0 && <div className="text-center py-24 opacity-10 font-black italic text-5xl">EMPTY PLAN</div>}
                             </div>
                         )}
                     </main>
 
                     {isAdminOpen && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
-                            <div className="bg-white w-full rounded-t-[40px] p-8 max-h-[92vh] overflow-y-auto shadow-2xl">
+                            <div className="bg-white w-full rounded-t-[40px] p-8 max-h-[92vh] overflow-y-auto">
                                 <div className="flex justify-between items-center mb-8 sticky top-0 bg-white z-10 py-2 border-b">
                                     <h2 className="text-2xl font-black italic tracking-tighter uppercase">{editingActId ? '✏️ Edit Act' : '⚙️ Config'}</h2>
                                     <button onClick={() => { setIsAdminOpen(false); setEditingActId(null); }} className="w-10 h-10 bg-slate-100 rounded-2xl active:scale-90 flex items-center justify-center text-xl">❌</button>
                                 </div>
-                                <section className="mb-10 bg-slate-50 p-6 rounded-[32px] shadow-inner">
+                                <section className="mb-10 bg-slate-50 p-6 rounded-[32px] shadow-inner space-y-4">
                                     <form className="space-y-4" onSubmit={handleActSubmit}>
                                         <div className="grid grid-cols-2 gap-3">
-                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none shadow-sm" />
-                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none shadow-sm">
+                                            <input type="date" value={formAct.day} onChange={e=>setFormAct({...formAct, day: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none" />
+                                            <select value={formAct.stageId} onChange={e=>setFormAct({...formAct, stageId: e.target.value})} required className="bg-white rounded-xl px-4 py-3 text-xs font-bold border-none">
                                                 <option value="">選擇舞台</option>
                                                 {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
                                         </div>
                                         <input placeholder="樂團單位名稱" value={formAct.name} onChange={e=>setFormAct({...formAct, name: e.target.value})} required className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border-none shadow-sm" />
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2 text-center text-slate-400 uppercase text-[9px] font-black">
-                                                <p>Start</p>
-                                                <div className="flex gap-1">
-                                                    <select value={formAct.sh} onChange={e=>setFormAct({...formAct, sh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select>
-                                                    <select value={formAct.sm} onChange={e=>setFormAct({...formAct, sm: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2 text-center text-slate-400 uppercase text-[9px] font-black">
-                                                <p>End</p>
-                                                <div className="flex gap-1">
-                                                    <select value={formAct.eh} onChange={e=>setFormAct({...formAct, eh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select>
-                                                    <select value={formAct.em} onChange={e=>setFormAct({...formAct, em: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select>
-                                                </div>
-                                            </div>
+                                        <div className="grid grid-cols-2 gap-4 text-center text-slate-400 text-[9px] font-black uppercase">
+                                            <div><p>Start</p><div className="flex gap-1"><select value={formAct.sh} onChange={e=>setFormAct({...formAct, sh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select><select value={formAct.sm} onChange={e=>setFormAct({...formAct, sm: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select></div></div>
+                                            <div><p>End</p><div className="flex gap-1"><select value={formAct.eh} onChange={e=>setFormAct({...formAct, eh: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{Array.from({length:24},(_,i)=>i.toString().padStart(2,'0')).map(h=><option key={h} value={h}>{h}</option>)}</select><select value={formAct.em} onChange={e=>setFormAct({...formAct, em: e.target.value})} className="flex-1 bg-white rounded-lg p-2 text-xs font-black shadow-sm">{['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m}</option>)}</select></div></div>
                                         </div>
-                                        <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase flex items-center justify-center gap-2">💾 {editingActId ? '修改演出' : '加入演出'}</button>
+                                        <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase">💾 {editingActId ? '修改演出' : '加入演出'}</button>
                                     </form>
                                 </section>
-                                <section className="mb-12">
-                                    <h3 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">舞台管理</h3>
-                                    <div className="flex flex-wrap gap-2 mb-6">
-                                        {stages.map(s => <div key={s.id} className="bg-white border-2 px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-3 shadow-sm" style={{ borderColor: s.color }}><div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />{s.name}<button onClick={() => {if(confirm('確定刪除？')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="text-slate-300">🗑️</button></div>)}
-                                    </div>
-                                    <div className="bg-slate-50 p-6 rounded-[24px] space-y-4">
-                                        <input id="s-name" type="text" placeholder="輸入舞台名稱..." className="w-full bg-white border-none rounded-xl px-4 py-3 text-sm font-bold shadow-sm" />
-                                        <div className="flex flex-wrap gap-2 justify-center">{PRESET_COLORS.map(c => <button key={c} onClick={() => window._selColor = c} className="w-9 h-9 rounded-full border-4 border-white focus:ring-4 focus:ring-black transition-all shadow-sm" style={{ backgroundColor: c }} />)}</div>
-                                        <button onClick={() => { const n = document.getElementById('s-name').value; if(n) setStages([...stages, { id: Date.now().toString(), name: n, color: window._selColor || '#000' }]); document.getElementById('s-name').value=''; }} className="w-full bg-indigo-900 text-white py-4 rounded-2xl font-black text-xs uppercase shadow-xl">建立舞台</button>
-                                    </div>
+                                <section className="mb-12 space-y-4">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">舞台管理</h3>
+                                    <div className="flex flex-wrap gap-2">{stages.map(s => <div key={s.id} className="bg-white border-2 px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-3 shadow-sm" style={{ borderColor: s.color }}><div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />{s.name}<button onClick={() => {if(confirm('確定刪除？')) {setStages(stages.filter(x=>x.id!==s.id)); setActs(acts.filter(x=>x.stageId!==s.id));}}} className="text-slate-300">🗑️</button></div>)}</div>
+                                    <div className="bg-slate-50 p-6 rounded-[24px] space-y-4"><input id="s-name" type="text" placeholder="輸入名稱..." className="w-full bg-white border-none rounded-xl px-4 py-3 text-sm font-bold shadow-sm" /><div className="flex flex-wrap gap-2 justify-center">{PRESET_COLORS.map(c => <button key={c} onClick={() => window._selColor = c} className="w-9 h-9 rounded-full border-4 border-white shadow-sm" style={{ backgroundColor: c }} />)}</div><button onClick={() => { const n = document.getElementById('s-name').value; if(n) setStages([...stages, { id: Date.now().toString(), name: n, color: window._selColor || '#000' }]); document.getElementById('s-name').value=''; }} className="w-full bg-indigo-900 text-white py-4 rounded-2xl font-black text-xs uppercase shadow-xl">建立舞台</button></div>
                                 </section>
-                                <section className="mb-12 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl">
-                                    <h3 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">💾 Data Insurance</h3>
-                                    <textarea className="w-full h-28 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-slate-300 border-none mb-4 ring-1 ring-white/10" placeholder="貼上代碼還原..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => { const s = JSON.stringify({ stages, acts, selectedIds }); setBackupData(s); alert('代碼已產生！'); }} className="bg-white/10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest">Export</button>
-                                        <button onClick={() => { if(!backupData) return; if(confirm('覆蓋資料？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('成功！'); setBackupData(''); } catch(e) { alert('格式錯誤'); } } }} className="bg-indigo-600 py-4 rounded-2xl font-black text-xs shadow-lg uppercase tracking-widest">Restore</button>
-                                    </div>
-                                </section>
-                                <section className="pb-10 space-y-3">
-                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">管理演出清單</h3>
-                                    {acts.sort((a,b)=>timeToMinutes(a.startTime)-timeToMinutes(b.startTime)).map(a => (
-                                        <div key={a.id} className="flex justify-between items-center bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1"><span className="text-[9px] font-bold text-slate-400">{a.day}</span><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stages.find(s=>s.id===a.stageId)?.color }} /></div>
-                                                <p className="font-black text-sm">{a.startTime} {a.name}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => { const [sh, sm] = a.startTime.split(':'); const [eh, em] = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh, sm, eh, em }); setEditingActId(a.id); }} className="w-10 h-10 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl">✏️</button>
-                                                <button onClick={() => { if(confirm('刪除？')) setActs(acts.filter(x=>x.id!==a.id)); }} className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 rounded-xl">🗑️</button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </section>
+                                <section className="mb-12 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl space-y-4"><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">💾 Data Insurance</h3><textarea className="w-full h-28 bg-white/5 rounded-2xl p-4 text-[10px] font-mono text-slate-300 border-none mb-4 ring-1 ring-white/10" placeholder="貼上代碼..." value={backupData} onChange={e=>setBackupData(e.target.value)}></textarea><div className="grid grid-cols-2 gap-3"><button onClick={() => { const s = JSON.stringify({ stages, acts, selectedIds }); setBackupData(s); alert('已產生！'); }} className="bg-white/10 py-4 rounded-2xl font-black text-xs tracking-widest uppercase">Export</button><button onClick={() => { if(!backupData) return; if(confirm('還原？')) { try { const p = JSON.parse(backupData); setStages(p.stages || []); setActs(p.acts || []); setSelectedIds(p.selectedIds || []); alert('成功！'); setBackupData(''); } catch(e) { alert('格式錯誤'); } } }} className="bg-indigo-600 py-4 rounded-2xl font-black text-xs shadow-lg uppercase tracking-widest">Restore</button></div></section>
+                                <section className="pb-10 space-y-3"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">管理演出</h3>{acts.sort((a,b)=>timeToMinutes(a.startTime)-timeToMinutes(b.startTime)).map(a => (<div key={a.id} className="flex justify-between items-center bg-white p-5 rounded-3xl border shadow-sm"><div className="flex-1"><div className="flex items-center gap-2 mb-1 text-[9px] font-bold text-slate-400"><span>{a.day}</span><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stages.find(s=>s.id===a.stageId)?.color }} /></div><p className="font-black text-sm">{a.startTime} {a.name}</p></div><div className="flex gap-2"><button onClick={() => { const [sh, sm] = a.startTime.split(':'); const [eh, em] = a.endTime.split(':'); setFormAct({ day: a.day, stageId: a.stageId, name: a.name, sh, sm, eh, em }); setEditingActId(a.id); }} className="w-10 h-10 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl">✏️</button><button onClick={() => { if(confirm('刪除？')) setActs(acts.filter(x=>x.id!==a.id)); }} className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 rounded-xl">🗑️</button></div></div>))}</section>
                             </div>
                         </div>
                     )}
